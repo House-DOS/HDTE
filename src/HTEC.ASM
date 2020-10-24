@@ -40,8 +40,71 @@ main:
 
     mov word [fsize], ax                    ; Store size here
 
-.edit:
+.load:
+    mov cx, 0x17                        ; Get and print 23 lines
+    mov di, dest_buffer                 ; Copy into buffer
 
+.print:
+    push cx                             ; Store line counter
+    push di                             ; Store buffer pointer
+
+    mov ah, 0x64                        ; Get line
+    neg cx                              ; Negate cx
+    add cx, 0x17                        ; Add 23 to get line index
+    add cx, word [linecounter]          ; Add what line we're on
+    int 0x7E
+
+    jc .edit                            ; Everything is loaded
+
+    pop cx                              ; Get what buffer pointer was
+    sub cx, di                          ; Find how much it advanced
+    neg cx                              ; Get positive difference
+    cmp cx, 0x50                        ; Is it more than 80 characters?
+    jg .print80                         ; Only print 80 characters
+
+    mov ah, 0x10                        ; Print bytes
+    mov si, di                          ; Start at pointer
+    int 0x7E
+
+.nextline:
+    pop cx                              ; Restore line counter
+    loop .print                         ; Go to next line
+
+.print80:
+    mov ah, 0x10                        ; Print bytes
+    mov cx, 0x50                        ; Print 80 characters
+    mov si, di                          ; Start at pointer
+    int 0x7E
+
+    jmp .nextline                       ; Go to next line
+
+.edit:
+    mov ah, 0x0D                        ; Get cursor position
+    int 0x7E
+
+    mov ah, 0x12                        ; Get keypress
+    int 0x7E
+
+    jc .edit                            ; Loop if no keypress
+
+    ;cmp ah, 0x01                        ; Is it an escape?
+    ;je .escape_menu
+
+    ; cmp
+    ; If they press enter, insert a newline
+    ; F1: Cut
+    ; F2: Copy
+    ; F3: Paste
+    ; F4: Delete
+
+    ; Display cursor
+    ; Check keyboard input
+    ; If arrow keys, move cursor
+    ; If normal keys, add to file where cursor is
+    ; If backspace/delete, remove from file
+    ; If enter, insert new line
+    ; If escape character, display special options/prompts
+    ; If quit character, leave
 
 .done:
     mov ah, 0xFF                            ; End command
@@ -52,3 +115,4 @@ data:
 fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
+linecounter     dw 0x0000
