@@ -41,6 +41,20 @@ main:
     mov word [fsize], ax                    ; Store size here
 
 .load:
+    mov ah, 0x06                        ; Clear screen
+    int 0x7E
+
+    mov ah, 0x11                        ; Draw block
+    mov al, 0x20                        ; Spaces
+    mov bl, 0b10010000                  ; Blinking, blue background, black foreground
+    mov cx, 0x0050                      ; The length of one row
+    mov dx, 0x0000                      ; Uppermost row, leftmost col
+    int 0x7E
+
+    mov ah, 0x02                        ; Print line
+    mov si, header                      ; Our message
+    int 0x7E
+
     mov cx, 0x17                        ; Get and print 23 lines
     mov di, dest_buffer                 ; Copy into buffer
 
@@ -57,13 +71,14 @@ main:
     jc .edit                            ; Everything is loaded
 
     pop cx                              ; Get what buffer pointer was
+    push cx                             ; Re-push the buffer pointer
     sub cx, di                          ; Find how much it advanced
     neg cx                              ; Get positive difference
     cmp cx, 0x50                        ; Is it more than 80 characters?
     jg .print80                         ; Only print 80 characters
 
     mov ah, 0x10                        ; Print bytes
-    mov si, di                          ; Start at pointer
+    pop si                              ; Print from the beginning of the line
     int 0x7E
 
 .nextline:
@@ -73,7 +88,7 @@ main:
 .print80:
     mov ah, 0x10                        ; Print bytes
     mov cx, 0x50                        ; Print 80 characters
-    mov si, di                          ; Start at pointer
+    pop si                              ; Print from the beginning of the line
     int 0x7E
 
     jmp .nextline                       ; Go to next line
@@ -83,6 +98,10 @@ main:
     int 0x7E
 
     mov ah, 0x12                        ; Get keypress
+    int 0x7E
+
+    mov ah, 0xC0                        ; Sleep milliseconds
+    mov cx, 0x0020                      ; 32
     int 0x7E
 
     jc .edit                            ; Loop if no keypress
@@ -112,7 +131,11 @@ main:
 
 data:
 
+header          db "House-DOS Text Editor", 0x00
+
 fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
 linecounter     dw 0x0000
+
+dest_buffer:
