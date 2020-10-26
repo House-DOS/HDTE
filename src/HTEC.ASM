@@ -41,20 +41,7 @@ main:
     mov word [fsize], ax                    ; Store size here
 
 .load:
-    mov ah, 0x06                        ; Clear screen
-    int 0x7E
-
-    mov ah, 0x11                        ; Draw block
-    mov al, 0x20                        ; Spaces
-    mov bl, 0b10010000                  ; Blinking, blue background, black foreground
-    mov cx, 0x0050                      ; The length of one row
-    mov dx, 0x0000                      ; Uppermost row, leftmost col
-    int 0x7E
-
-    mov ah, 0x02                        ; Print line
-    mov si, header                      ; Our message
-    int 0x7E
-
+    call draw_header                    ; Print header
     mov cx, 0x17                        ; Get and print 23 lines
     mov di, dest_buffer                 ; Copy into buffer
 
@@ -106,10 +93,10 @@ main:
 
     jc .edit                            ; Loop if no keypress
 
-    ;cmp ah, 0x01                        ; Is it an escape?
-    ;je .escape_menu
+    cmp ah, 0x01                        ; Is it an escape?
+    je .escape_menu
 
-    ; cmp
+    ;cmp
     ; If they press enter, insert a newline
     ; F1: Cut
     ; F2: Copy
@@ -125,9 +112,42 @@ main:
     ; If escape character, display special options/prompts
     ; If quit character, leave
 
-.done:
-    mov ah, 0xFF                            ; End command
+.escape_menu:
+    call draw_header                    ; Print header
+    mov ah, 0x02                        ; Print line
+    mov si, menu_text                   ; Escape menu text
     int 0x7E
+
+.escape_loop:
+    mov ah, 0x12                        ; Get keypress
+    int 0x7E
+
+    jc .escape_loop                     ; Loop if no keypress
+
+    cmp ah, 0x01                        ; Is it escape again?
+    je .done                            ; If so, quit
+
+    jmp .load                           ; Print file again, then resume editing
+
+.done:
+    mov ah, 0xFF                        ; End command
+    int 0x7E
+
+draw_header:
+    mov ah, 0x06                        ; Clear screen
+    int 0x7E
+
+    mov ah, 0x11                        ; Draw block
+    mov al, 0x20                        ; Spaces
+    mov bl, 0b10010000                  ; Blinking, blue background, black foreground
+    mov cx, 0x0050                      ; The length of one row
+    mov dx, 0x0000                      ; Uppermost row, leftmost col
+    int 0x7E
+
+    mov ah, 0x02                        ; Print line
+    mov si, header                      ; Our message
+    int 0x7E
+    ret
 
 data:
 
@@ -137,5 +157,8 @@ fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
 linecounter     dw 0x0000
+
+menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, 0x0A
+                db "Press ESC to exit, any other key to return...", 0x00
 
 dest_buffer:
