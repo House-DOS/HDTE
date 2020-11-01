@@ -40,10 +40,16 @@ main:
 
     mov word [fsize], ax                    ; Store size here
 
+    mov dh, 0x01                        ; Cursor on second row
+
 .load:
     call draw_header                    ; Print header
     mov cx, 0x17                        ; Get and print 23 lines
     mov di, dest_buffer                 ; Copy into buffer
+
+    mov ah, 0x08                        ; Set cursor position
+    mov dl, byte [lineoffset]           ; Column is line offset
+    int 0x7E
 
 .print:
     push cx                             ; Store line counter
@@ -96,6 +102,12 @@ main:
     cmp ah, 0x01                        ; Is it an escape?
     je .escape_menu
 
+    cmp ah, 0x1C                        ; Is it enter?
+    je .newline                         ; If so, newline
+
+    cmp al, 0x00                        ; Is there no ASCII code?
+    je .edit                            ; If so, loop
+
     ;cmp
     ; If they press enter, insert a newline
     ; F1: Cut
@@ -129,11 +141,45 @@ main:
 
     jmp .load                           ; Print file again, then resume editing
 
+.newline:
+    call absolute_position              ; Get position
+    mov ah, 0x6B                        ; Insert bytes
+    mov cx, 0x01                        ; Write 1 byte
+    mov si, newline_char                ; We want to write a newline
+    int 0x7E
+
+    mov word [lineoffset], 0x0000       ; Far left column
+    mov ah, 0x0D                        ; Get cursor position
+    int 0x7E
+
+    inc dh                              ; Move cursor down one row
+
+    jmp .load                           ; Print edited version
+
 .done:
     mov ah, 0xFF                        ; End command
     int 0x7E
 
+absolute_position:                      ; What is the address of where we are in the file?
+    pusha                               ; Save register states
+    mov cx, word [linecounter]          ; Nearest 23 lines
+
+    mov ah, 0x0D                        ; Get cursor position
+    int 0x7E
+    shr dx, 0x08                        ; Move row into right of dx
+    add cx, dx                          ; Get address of row we're on
+
+    mov ah, 0x65                        ; Get address of line
+    int 0x7E
+
+    add si, word [lineoffset]           ; Add how far into the line we are
+    mov word [absolute_address], si     ; Store address
+    popa                                ; Restore register states
+    mov di, word [absolute_address]     ; Store in di
+    ret
+
 draw_header:
+    pusha                               ; Save register states
     mov ah, 0x06                        ; Clear screen
     int 0x7E
 
@@ -147,6 +193,7 @@ draw_header:
     mov ah, 0x02                        ; Print line
     mov si, header                      ; Our message
     int 0x7E
+    popa                                ; Restore register states
     ret
 
 data:
@@ -156,7 +203,11 @@ header          db "House-DOS Text Editor", 0x00
 fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
-linecounter     dw 0x0000
+linecounter     dw 0x0000               ; Nearest 23 lines
+lineoffset      dw 0x0000               ; How far into the line are we
+absolute_address dw 0x0000              ; Address of where we are
+
+newline_char    db 0x0A
 
 menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
