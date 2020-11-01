@@ -47,10 +47,6 @@ main:
     mov cx, 0x17                        ; Get and print 23 lines
     mov di, dest_buffer                 ; Copy into buffer
 
-    mov ah, 0x08                        ; Set cursor position
-    mov dl, byte [lineoffset]           ; Column is line offset
-    int 0x7E
-
 .print:
     push cx                             ; Store line counter
     push di                             ; Store buffer pointer
@@ -61,7 +57,7 @@ main:
     add cx, word [linecounter]          ; Add what line we're on
     int 0x7E
 
-    jc .edit                            ; Everything is loaded
+    jc .set_cursor                      ; Everything is loaded
 
     pop cx                              ; Get what buffer pointer was
     push cx                             ; Re-push the buffer pointer
@@ -86,6 +82,9 @@ main:
 
     jmp .nextline                       ; Go to next line
 
+.set_cursor:
+    call set_cursor_our_variables
+
 .edit:
     mov ah, 0x0D                        ; Get cursor position
     int 0x7E
@@ -101,6 +100,12 @@ main:
 
     cmp ah, 0x01                        ; Is it an escape?
     je .escape_menu
+
+    cmp ah, 0x4B                        ; Left arrow
+    je .left_arrow
+
+    cmp ah, 0x4D                        ; Right arrow
+    je .right_arrow
 
     cmp ah, 0x1C                        ; Is it enter?
     je .newline                         ; If so, newline
@@ -156,18 +161,50 @@ main:
 
     jmp .load                           ; Print edited version
 
+.left_arrow:
+    cmp byte [lineoffset], 0x00         ; Are we at the beginning of a line?
+    je .edit                            ; Do nothing
+
+    dec byte [lineoffset]               ; Move one to the left
+    jmp .set_cursor                     ; Update cursor position
+
+.right_arrow:
+    call absolute_position              ; Get our absolute position
+    mov si, di                          ; Move into si
+    mov cx, 0x0001                      ; Copy 1 byte
+    mov ah, 0x62                        ; Get bytes
+    mov di, dest_buffer                 ; Copy into here
+    int 0x7E
+
+    cmp byte [dest_buffer], 0x0A        ; Are we on a newline?
+    je .edit                            ; Do nothing
+
+    inc byte [lineoffset]               ; Move one to the right
+    jmp .set_cursor                     ; Update cursor position
+
 .done:
     mov ah, 0xFF                        ; End command
     int 0x7E
+
+set_cursor_our_variables:
+    mov ax, word [lineoffset]           ; Set column
+    mov dl, 0x50                        ; Set up to divide by 80
+    div dl                              ; Divide ax by this
+
+    mov dl, ah                          ; Remainder is cursor column
+    mov dh, byte [row]                  ; Setting cursor row
+    inc dh                              ; Start at 2nd row
+    mov ah, 0x08                        ; Setting cursor position
+    int 0x7E
+    ret
 
 absolute_position:                      ; What is the address of where we are in the file?
     pusha                               ; Save register states
     mov cx, word [linecounter]          ; Nearest 23 lines
 
-    mov ah, 0x0D                        ; Get cursor position
-    int 0x7E
-    shr dx, 0x08                        ; Move row into right of dx
-    add cx, dx                          ; Get address of row we're on
+    mov dl, byte [row]                  ; Move row number into dl
+    mov dh, 0x00                        ; Fill dh with 0s
+    add cx, dx                          ; Get line number
 
     mov ah, 0x65                        ; Get address of line
     int 0x7E
@@ -204,6 +241,7 @@ fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
 linecounter     dw 0x0000               ; Nearest 23 lines
+row             db 0x00
 lineoffset      dw 0x0000               ; How far into the line are we
 absolute_address dw 0x0000              ; Address of where we are
 
