@@ -92,9 +92,9 @@ main:
     mov ah, 0x12                        ; Get keypress
     int 0x7E
 
-    mov ah, 0xC0                        ; Sleep milliseconds
-    mov cx, 0x0020                      ; 32
-    int 0x7E
+    ;mov ah, 0xC0                        ; Sleep milliseconds
+    ;mov cx, 0x0020                      ; 32
+    ;int 0x7E
 
     jc .edit                            ; Loop if no keypress
 
@@ -110,8 +110,14 @@ main:
     cmp ah, 0x1C                        ; Is it enter?
     je .newline                         ; If so, newline
 
+    cmp ah, 0x42                        ; F8 to save
+    je .save
+
     cmp al, 0x00                        ; Is there no ASCII code?
     je .edit                            ; If so, loop
+
+    call print_editing_message
+
 
     ;cmp
     ; If they press enter, insert a newline
@@ -158,8 +164,10 @@ main:
     int 0x7E
 
     inc dh                              ; Move cursor down one row
+    inc word [fsize]                    ; Increase file size by 1 character
 
     jmp .load                           ; Print edited version
+
 
 .left_arrow:
     cmp byte [lineoffset], 0x00         ; Are we at the beginning of a line?
@@ -181,6 +189,19 @@ main:
 
     inc byte [lineoffset]               ; Move one to the right
     jmp .set_cursor                     ; Update cursor position
+
+.save:
+    mov ah, 0x6F                        ; Write file to disk
+    mov si, fname                       ; File name
+    mov cx, word [fsize]                ; File size
+    int 0x7E
+
+    jc .done                            ; Done if there's an error
+
+    mov si, save_message                ; The message we print at the bottom after saving
+    call print_bottom_line              ; Print this to the bottom of the screen
+
+    jmp .print                          ; Return to editing
 
 .done:
     mov ah, 0xFF                        ; End command
@@ -233,6 +254,24 @@ draw_header:
     popa                                ; Restore register states
     ret
 
+print_bottom_line:                      ; Si is address of message to print
+    pusha                               ; Save register states
+
+    mov dx, 0x1800                      ; Print message on bottom left
+    mov ah, 0x08                        ; Set cursor position
+    int 0x7E
+
+    mov ah, 0x01                        ; Print
+    int 0x7E
+
+    popa                                ; Restore register states
+    ret
+
+print_editing_message:
+    mov si, editing_message             ; The message we print at the bottom while editing
+    call print_bottom_line              ; Print this to the bottom of the screen
+    ret
+
 data:
 
 header          db "House-DOS Text Editor", 0x00
@@ -247,7 +286,9 @@ absolute_address dw 0x0000              ; Address of where we are
 
 newline_char    db 0x0A
 
-menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, 0x0A
+menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
+save_message    db "File saved!", 0x00
+editing_message db "Editing file", 0x00
 
 dest_buffer:
