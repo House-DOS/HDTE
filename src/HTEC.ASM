@@ -107,6 +107,12 @@ main:
     cmp ah, 0x4D                        ; Right arrow
     je .right_arrow
 
+    cmp ah, 0x48                        ; Up arrow
+    je .up_arrow
+
+    cmp ah, 0x50                        ; Down arrow
+    je .down_arrow
+
     cmp ah, 0x1C                        ; Is it enter?
     je .newline                         ; If so, newline
 
@@ -116,7 +122,18 @@ main:
     cmp al, 0x00                        ; Is there no ASCII code?
     je .edit                            ; If so, loop
 
-    call print_editing_message
+    mov byte [char_write], al           ; Otherwise, save the character to write
+
+    call absolute_position              ; Get position in di
+    mov ah, 0x6B                        ; Insert bytes
+    mov cx, 0x01                        ; Write 1 byte
+    mov si, char_write                  ; Address of where our character code is
+    int 0x7E
+
+    inc word [lineoffset]               ; Increment line offset
+
+
+    jmp .load
 
 
     ;cmp
@@ -153,7 +170,7 @@ main:
     jmp .load                           ; Print file again, then resume editing
 
 .newline:
-    call absolute_position              ; Get position
+    call absolute_position              ; Get position in di
     mov ah, 0x6B                        ; Insert bytes
     mov cx, 0x01                        ; Write 1 byte
     mov si, newline_char                ; We want to write a newline
@@ -163,7 +180,7 @@ main:
     mov ah, 0x0D                        ; Get cursor position
     int 0x7E
 
-    inc dh                              ; Move cursor down one row
+    inc word [row]                      ; Move cursor down one row
     inc word [fsize]                    ; Increase file size by 1 character
 
     jmp .load                           ; Print edited version
@@ -190,6 +207,61 @@ main:
     inc byte [lineoffset]               ; Move one to the right
     jmp .set_cursor                     ; Update cursor position
 
+.up_arrow:
+    cmp byte [row], 0x00                ; Are we on the first line?
+    je .edit                            ; If so, do nothing
+
+    mov cx, word [linecounter]          ; Nearest 23 lines
+    mov dl, byte [row]                  ; Move row number into dl
+    mov dh, 0x00                        ; Fill dh with 0s
+    add cx, dx                          ; Get line number
+
+    mov ah, 0x65                        ; Get address of line
+    int 0x7E
+
+    push si                             ; Save this address
+    dec cx                              ; Now get address of line above us
+    int 0x7E
+
+    pop cx                              ; Restore address of line we're on into cx
+    sub cx, si                          ; Find length of line above us
+
+    dec word [row]                      ; Go one row up
+
+    cmp cx, word [lineoffset]           ; Are we farther into a line than this?
+    jg .set_cursor                      ; If so, go straight up
+
+    mov word [lineoffset], cx           ; Otherwise, go to end of above line
+    jmp .set_cursor
+
+.down_arrow:
+    cmp byte [row], 0x16                ; Are we on the last of these 23 lines?
+    je .edit                            ; If so, do nothing
+
+    mov cx, word [linecounter]          ; Nearest 23 lines
+    mov dl, byte [row]                  ; Move row number into dl
+    mov dh, 0x00                        ; Fill dh with 0s
+    add cx, dx                          ; Get line number
+
+    mov ah, 0x65                        ; Get address of line
+    int 0x7E
+
+    push si                             ; Save this address
+    inc cx                              ; Now get address of line below us
+    int 0x7E
+
+    pop cx                              ; Restore address of line we're on into cx
+    xchg cx, si                         ; Switch these addresses
+    sub cx, si                          ; Find length of line below us
+
+    inc word [row]                      ; Go one row down
+
+    cmp cx, word [lineoffset]           ; Are we farther into a line than this?
+    jg .set_cursor                      ; If so, go straight down
+
+    mov word [lineoffset], cx           ; Otherwise, go to end of above line
+    jmp .set_cursor
+
 .save:
     mov ah, 0x6F                        ; Write file to disk
     mov si, fname                       ; File name
@@ -198,10 +270,10 @@ main:
 
     jc .done                            ; Done if there's an error
 
-    mov si, save_message                ; The message we print at the bottom after saving
-    call print_bottom_line              ; Print this to the bottom of the screen
+    ;mov si, save_message                ; The message we print at the bottom after saving
+    ;call print_bottom_line              ; Print this to the bottom of the screen
 
-    jmp .print                          ; Return to editing
+    jmp .load                           ; Return to editing
 
 .done:
     mov ah, 0xFF                        ; End command
@@ -285,6 +357,7 @@ lineoffset      dw 0x0000               ; How far into the line are we
 absolute_address dw 0x0000              ; Address of where we are
 
 newline_char    db 0x0A
+char_write      db 0x00
 
 menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
