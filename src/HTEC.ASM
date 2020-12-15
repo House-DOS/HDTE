@@ -7,6 +7,18 @@
     BITS 16
 
 ; ========================================================================
+; Header
+; ========================================================================
+
+header:
+    jmp main                            ; Don't execute the header
+
+h_creator       dw creator              ; Creator string
+h_desc          dw desc                 ; Description string
+h_usage         dw usage                ; Usage string
+
+
+; ========================================================================
 ; MAIN ROUTINE
 ; ========================================================================
 
@@ -131,6 +143,7 @@ main:
     int 0x7E
 
     inc word [lineoffset]               ; Increment line offset
+    inc word [fsize]                    ; Increase file size by 1 character
 
 
     jmp .load
@@ -229,9 +242,10 @@ main:
     dec word [row]                      ; Go one row up
 
     cmp cx, word [lineoffset]           ; Are we farther into a line than this?
-    jg .set_cursor                      ; If so, go straight up
+    jg .set_cursor                      ; If not, go straight up
 
-    mov word [lineoffset], cx           ; Otherwise, go to end of above line
+    dec cx                              ; Otherwise, avoid an O.B.O.E with the newline
+    mov word [lineoffset], cx           ; Go to end of above line
     jmp .set_cursor
 
 .down_arrow:
@@ -242,15 +256,16 @@ main:
     mov dl, byte [row]                  ; Move row number into dl
     mov dh, 0x00                        ; Fill dh with 0s
     add cx, dx                          ; Get line number
+    inc cx
 
-    mov ah, 0x65                        ; Get address of line
+    mov ah, 0x65                        ; Get address of line below us
     int 0x7E
 
     push si                             ; Save this address
-    inc cx                              ; Now get address of line below us
+    inc cx                              ; Now get address of next line
     int 0x7E
 
-    pop cx                              ; Restore address of line we're on into cx
+    pop cx                              ; Restore address of line below us on into cx
     xchg cx, si                         ; Switch these addresses
     sub cx, si                          ; Find length of line below us
 
@@ -259,7 +274,8 @@ main:
     cmp cx, word [lineoffset]           ; Are we farther into a line than this?
     jg .set_cursor                      ; If so, go straight down
 
-    mov word [lineoffset], cx           ; Otherwise, go to end of above line
+    dec cx                              ; Otherwise, avoid an O.B.O.E with the newline
+    mov word [lineoffset], cx           ; Go to end of line below
     jmp .set_cursor
 
 .save:
@@ -363,5 +379,9 @@ menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0
                 db "Press ESC to exit, any other key to return...", 0x00
 save_message    db "File saved!", 0x00
 editing_message db "Editing file", 0x00
+
+creator         db "Ben and Jacob", 0x00
+desc            db "A text editor in the House-DOS operating system", 0x00
+usage           db "HTEC <FILENAME>", 0x00
 
 dest_buffer:
