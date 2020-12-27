@@ -84,8 +84,11 @@ main:
     pop cx                              ; Restore line counter
     loop .print                         ; Go to next line
 
-
 .set_cursor:
+    mov ah, 0x08                        ; Set cursor position
+    mov dx, 0x0100                      ; The upper-left corner (avoid the header)
+    int 0x7E
+
     mov ah, 0x62                        ; Get bytes
     mov si, 0x00                        ; Start at the beginning of the file
     mov cx, word [address]              ; Print bytes of how far into the file
@@ -141,9 +144,8 @@ main:
     mov si, char_write                  ; Address of where our character code is
     int 0x7E
 
-    inc word [address]                  ; Increment line offset
+    inc word [address]                  ; Move 1 character forward
     inc word [fsize]                    ; Increase file size by 1 character
-
 
     jmp .load
 
@@ -154,6 +156,7 @@ main:
     ; F2: Copy
     ; F3: Paste
     ; F4: Delete
+    ; F8: Save
 
     ; Display cursor
     ; Check keyboard input
