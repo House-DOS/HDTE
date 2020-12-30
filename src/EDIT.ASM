@@ -298,6 +298,7 @@ main:
     mov ah, 0x65                        ; Get line address
     int 0x7E
 
+    mov word [address], si              ; This will be our new cursor position
     push si                             ; Preserve address
 
     inc cx                              ; Next line
