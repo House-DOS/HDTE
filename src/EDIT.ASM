@@ -127,8 +127,11 @@ main:
     cmp ah, 0x50                        ; Down arrow
     je .down_arrow
 
-    cmp ah, 0x1C                        ; Is it enter?
-    je .newline                         ; If so, newline
+    cmp ah, 0x1C                        ; RETURN to write newline
+    je .newline
+
+    cmp ah, 0x3E                        ; F4 to delete line
+    je .delete
 
     cmp ah, 0x42                        ; F8 to save
     je .save
@@ -287,6 +290,28 @@ main:
     mov word [address], si              ; Go to this address
     jmp .set_cursor
 
+.delete:
+    mov ah, 0x67                        ; Get line and col
+    mov si, word [address]              ; Our address in the file
+    int 0x7E
+
+    mov ah, 0x65                        ; Get line address
+    int 0x7E
+
+    push si                             ; Preserve address
+
+    inc cx                              ; Next line
+    int 0x7E
+
+    pop cx                              ; Restore address
+    sub cx, si                          ; Subtract to get negative length of line (negated, to shift left)
+
+    mov ah, 0x6B                        ; Insert bytes (shift left)
+    mov di, si                          ; Shift starting from next line
+    int 0x7E
+
+    jmp .load                           ; Print edited version
+
 .save:
     mov ah, 0x6F                        ; Write file to disk
     mov si, fname                       ; File name
@@ -295,31 +320,12 @@ main:
 
     jc .done                            ; Done if there's an error
 
-    ;mov si, save_message                ; The message we print at the bottom after saving
-    ;call print_bottom_line              ; Print this to the bottom of the screen
-
     jmp .load                           ; Return to editing
 
 .done:
     mov ah, 0xFF                        ; End command
     int 0x7E
 
-absolute_position:                      ; What is the address of where we are in the file?
-    pusha                               ; Save register states
-    mov cx, word [linecounter]          ; Nearest 23 lines
-
-    mov dl, byte [row]                  ; Move row number into dl
-    mov dh, 0x00                        ; Fill dh with 0s
-    add cx, dx                          ; Get line number
-
-    mov ah, 0x65                        ; Get address of line
-    int 0x7E
-
-    add si, word [lineoffset]           ; Add how far into the line we are
-    ;mov word [absolute_address], si     ; Store address
-    popa                                ; Restore register states
-    ;mov di, word [absolute_address]     ; Store in di
-    ret
 
 draw_header:
     pusha                               ; Save register states
@@ -339,23 +345,6 @@ draw_header:
     popa                                ; Restore register states
     ret
 
-print_bottom_line:                      ; Si is address of message to print
-    pusha                               ; Save register states
-
-    mov dx, 0x1800                      ; Print message on bottom left
-    mov ah, 0x08                        ; Set cursor position
-    int 0x7E
-
-    mov ah, 0x01                        ; Print
-    int 0x7E
-
-    popa                                ; Restore register states
-    ret
-
-print_editing_message:
-    mov si, editing_message             ; The message we print at the bottom while editing
-    call print_bottom_line              ; Print this to the bottom of the screen
-    ret
 
 data:
 
@@ -372,13 +361,13 @@ address         dw 0x0000              ; Address of where we are
 newline_char    db 0x0A
 char_write      db 0x00
 
-menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
+menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste line", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
 save_message    db "File saved!", 0x00
 editing_message db "Editing file", 0x00
 
 creator         db "Ben and Jacob", 0x00
-desc            db "A text editor in the House-DOS operating system", 0x00
-usage           db "HTEC <FILENAME>", 0x00
+desc            db "A text editor for the House-DOS platform.", 0x00
+usage           db "EDIT <FILENAME>", 0x00
 
 dest_buffer:
