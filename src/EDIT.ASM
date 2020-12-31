@@ -115,6 +115,12 @@ main:
     cmp ah, 0x01                        ; Is it an escape?
     je .escape_menu
 
+    cmp ah, 0x0E                        ; Backspace
+    je .backspace
+
+    cmp ah, 0x53                        ; Delete key
+    je .delete
+
     cmp ah, 0x4B                        ; Left arrow
     je .left_arrow
 
@@ -130,8 +136,17 @@ main:
     cmp ah, 0x1C                        ; RETURN to write newline
     je .newline
 
+    cmp ah, 0x3B                        ; F1 to cut
+    je .line_cut
+
+    cmp ah, 0x3C                        ; F2 to copy
+    je .line_copy
+
+    cmp ah, 0x3D                        ; F3 to paste
+    je .line_paste
+
     cmp ah, 0x3E                        ; F4 to delete line
-    je .delete
+    je .line_delete
 
     cmp ah, 0x42                        ; F8 to save
     je .save
@@ -186,6 +201,25 @@ main:
     je .done                            ; If so, quit
 
     jmp .load                           ; Print file again, then resume editing
+
+.backspace:
+    mov ah, 0x6B                        ; Insert bytes (shift left)
+    mov cx, 0xFFFF                      ; Shift 1 left (delete 1 character)
+    mov di, word [address]              ; Shift starting from here
+    int 0x7E
+
+    dec word [address]                  ; Move cursor back one
+
+    jmp .load                           ; Print edited version
+
+.delete:
+    mov ah, 0x6B                        ; Insert bytes (shift left)
+    mov cx, 0xFFFF                      ; Shift one left
+    mov di, word [address]              ; Shift starting from here
+    inc di                              ; Delete character to the right
+    int 0x7E
+
+    jmp .load                           ; Print edited version
 
 .newline:
     mov di, word [address]              ; Get our address
@@ -290,26 +324,59 @@ main:
     mov word [address], si              ; Go to this address
     jmp .set_cursor
 
-.delete:
+.line_cut:
+    mov ah, 0x67                        ; Get line/col from address
+    mov si, word [address]              ; Our current address
+    int 0x7E
+
+    push cx                             ; Save line number
+
+    mov ah, 0x64                        ; Get line
+    mov di, line_storage                ; Our buffer
+    int 0x7E
+
+    call get_line_length                ; Get the length of this line
+    mov word [cline_length], si         ; Store here
+
+    pop cx                              ; Restore line number
+    call delete_line                    ; Now delete the line
+
+    jmp .load                           ; Print edited version
+
+.line_copy:
+    mov ah, 0x67                        ; Get line/col from address
+    mov si, word [address]              ; Our current address
+    int 0x7E
+
+    mov ah, 0x64                        ; Get line
+    mov di, line_storage                ; Our buffer
+    int 0x7E
+
+    call get_line_length                ; Get the length of this line
+    mov word [cline_length], si         ; Store here
+
+    jmp .load                           ; Print edited version
+
+.line_paste:
+    mov ah, 0x67                        ; Get line/col from address
+    mov si, word [address]              ; Our current address
+    int 0x7E
+
+    mov ah, 0x6D                        ; Insert line
+    mov si, line_storage                ; From buffer (what's been copied)
+    int 0x7E
+
+    mov ax, word [cline_length]         ; Store length of line that's being pasted
+    add word [fsize], ax                ; Increase file size by this much
+
+    jmp .load                           ; Print edited version
+
+.line_delete:
     mov ah, 0x67                        ; Get line and col
     mov si, word [address]              ; Our address in the file
     int 0x7E
 
-    mov ah, 0x65                        ; Get line address
-    int 0x7E
-
-    mov word [address], si              ; This will be our new cursor position
-    push si                             ; Preserve address
-
-    inc cx                              ; Next line
-    int 0x7E
-
-    pop cx                              ; Restore address
-    sub cx, si                          ; Subtract to get negative length of line (negated, to shift left)
-
-    mov ah, 0x6B                        ; Insert bytes (shift left)
-    mov di, si                          ; Shift starting from next line
-    int 0x7E
+    call delete_line                    ; Use the routine
 
     jmp .load                           ; Print edited version
 
@@ -330,6 +397,7 @@ main:
 
 draw_header:
     pusha                               ; Save register states
+
     mov ah, 0x06                        ; Clear screen
     int 0x7E
 
@@ -343,9 +411,50 @@ draw_header:
     mov ah, 0x02                        ; Print line
     mov si, headermsg                   ; Our message
     int 0x7E
-    popa                                ; Restore register states
-    ret
 
+    popa                                ; Restore register states
+    ret                                 ; Return to caller
+
+
+delete_line:                            ; Delete whatever line is in CX
+    pusha                               ; Save register states to stack
+
+    mov ah, 0x65                        ; Get line address
+    int 0x7E
+
+    mov word [address], si              ; This will be our new cursor position
+    push si                             ; Preserve address
+
+    inc cx                              ; Next line
+    int 0x7E
+
+    pop cx                              ; Restore address
+    sub cx, si                          ; Subtract to get negative length of line (negated, to shift left)
+
+    mov ah, 0x6B                        ; Insert bytes (shift left)
+    mov di, si                          ; Shift starting from next line
+    int 0x7E
+
+    add word [fsize], cx                ; Add negative length of line to file length
+
+    popa                                ; Restore register states
+    ret                                 ; Return to caller
+
+
+get_line_length:                        ; Get length of the line in CX
+    mov ah, 0x65                        ; Get line address
+    int 0x7E
+
+    push si                             ; Preserve this address
+
+    inc cx                              ; Go to next line
+    int 0x7E
+
+    pop cx                              ; Restore address
+    sub si, cx                          ; Subtract to get length of line
+    mov cx, si                          ; Put length in cx
+
+    ret                                 ; Return to caller
 
 data:
 
@@ -355,9 +464,9 @@ fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
 linecounter     dw 0x0000               ; Nearest 23 lines
-lineoffset      dw 0x0000
-row             dw 0x0000
 address         dw 0x0000              ; Address of where we are
+
+cline_length    dw 0x0000               ; Length of line that's been copied or cut
 
 newline_char    db 0x0A
 char_write      db 0x00
@@ -370,5 +479,8 @@ editing_message db "Editing file", 0x00
 creator         db "Ben and Jacob", 0x00
 desc            db "A text editor for the House-DOS platform.", 0x00
 usage           db "EDIT <FILENAME>", 0x00
+
+line_storage:
+times 0x50      db 0x00
 
 dest_buffer:
