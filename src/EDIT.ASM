@@ -23,40 +23,24 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x0F
-    mov al, 0x03                            ; Turn off error messages and commentary
+    mov ah, 0x28                        ; Load file from first parameter
     int 0x7E
 
-    mov ah, 0x20                            ; Get parameters
-    mov cx, 0x0000                          ; First parameter
-    mov di, fname                           ; Move memory address
+    jc .done                            ; If failed, we're done
+
+    mov ah, 0x20                        ; Otherwise, get the parameter
+    mov cx, 0x0000                      ; First parameter
+    mov di, fname                       ; Our filename buffer
     int 0x7E
 
-    jnc .verify                             ; Successful, so go on
-
-    mov ah, 0x6E                            ; Clear file buffer
+    mov ah, 0x70                        ; Get size of file
     int 0x7E
 
-    jmp .edit                               ; We are editing file
+    mov word [fsize], ax                ; Store size here
 
-.verify:
-    mov ah, 0x60                            ; Verify file
-    mov si, fname                           ; Filename goes here
+    mov ah, 0x0F                        ; Modify interface config
+    mov al, 0x03                        ; Turn off error messages and commentary
     int 0x7E
-
-    jc .done                                ; is there an error?
-
-    mov ah, 0x61                            ; Load file
-    int 0x7E
-
-    jc .done
-
-    mov ah, 0x70                            ; Get size of file
-    int 0x7E
-
-    mov word [fsize], ax                    ; Store size here
-
-    mov dh, 0x01                        ; Cursor on second row
 
 .load:
     call draw_header                    ; Print header
@@ -89,9 +73,13 @@ main:
     mov dx, 0x0100                      ; The upper-left corner (avoid the header)
     int 0x7E
 
-    mov ah, 0x62                        ; Get bytes
-    mov si, 0x00                        ; Start at the beginning of the file
+    mov ah, 0x65                        ; Get line address
+    mov cx, word [linecounter]          ; The starting line on screen
+    int 0x7E
+
+    mov ah, 0x62                        ; Get bytes starting from that point
     mov cx, word [address]              ; Print bytes of how far into the file
+    sub cx, si                          ; Minus the bytes offscreen
     mov di, dest_buffer
     int 0x7E
 
@@ -105,10 +93,6 @@ main:
 
     mov ah, 0x12                        ; Get keypress
     int 0x7E
-
-    ;mov ah, 0xC0                        ; Sleep milliseconds
-    ;mov cx, 0x0020                      ; 32
-    ;int 0x7E
 
     jc .edit                            ; Loop if no keypress
 
@@ -156,10 +140,10 @@ main:
 
     mov byte [char_write], al           ; Otherwise, save the character to write
 
-    mov di, word [address]              ; Get position in di
-    mov ah, 0x6B                        ; Insert bytes
+    mov ah, 0x6B                        ; Insert byte
+    mov di, word [address]              ; Our position
     mov cx, 0x01                        ; Write 1 byte
-    mov si, char_write                  ; Address of where our character code is
+    mov si, char_write                  ; Address of our character
     int 0x7E
 
     inc word [address]                  ; Move 1 character forward
@@ -209,15 +193,24 @@ main:
     int 0x7E
 
     dec word [address]                  ; Move cursor back one
+    dec word [fsize]                    ; Decrement file size
 
     jmp .load                           ; Print edited version
 
 .delete:
+    mov ax, word [address]              ; Our position in the file
+    inc ax                              ; We don't want to ever be on the last character
+
+    cmp ax, word [fsize]                ; Are we at the end of the file?
+    jnb .edit                           ; If so, do nothing
+
     mov ah, 0x6B                        ; Insert bytes (shift left)
     mov cx, 0xFFFF                      ; Shift one left
     mov di, word [address]              ; Shift starting from here
     inc di                              ; Delete character to the right
     int 0x7E
+
+    dec word [fsize]                    ; Decrement file size
 
     jmp .load                           ; Print edited version
 
@@ -235,16 +228,17 @@ main:
 
 .left_arrow:
     cmp word [address], 0x0000          ; Are we at the beginning of the file?
-    je .edit                            ; Do nothing
+    je .edit                            ; If so, do nothing
 
-    dec word [address]                  ; Move address back 1
+    dec word [address]                  ; Otherwise, move address back 1
     jmp .set_cursor                     ; Update cursor position
 
 .right_arrow:
     mov ax, word [address]              ; Our position in the file
+    inc ax                              ; We don't want to ever be on the last character
 
     cmp ax, word [fsize]                ; Are we at the end of the file?
-    jnb .edit                           ; Do nothing
+    jnb .edit                           ; If so, do nothing
 
     inc word [address]                  ; Move address forward 1
     jmp .set_cursor                     ; Update cursor position
@@ -255,7 +249,7 @@ main:
     int 0x7E
 
     cmp cx, 0x0000                      ; Are we on the first line?
-    je .edit                            ; Do nothing
+    je .edit                            ; Id so, do nothing
 
     mov bx, word [address]              ; Our address
     sub bx, dx                          ; Subtract col number to get address of our line
@@ -270,7 +264,7 @@ main:
     add word [address], dx              ; Add our column number
 
     sub bx, si                          ; Subtract to get length of line above us
-    inc dx                              ;
+    inc dx                              ; Avoid an O.B.O.E
     cmp bx, dx                          ; Is the line above us shorter than our col?
 
     pop bx                              ; Restore address of start of our line
@@ -456,6 +450,7 @@ get_line_length:                        ; Get length of the line in CX
 
     ret                                 ; Return to caller
 
+
 data:
 
 headermsg       db "House-DOS Text Editor", 0x00
@@ -463,8 +458,9 @@ headermsg       db "House-DOS Text Editor", 0x00
 fname           dq 0x0000000000000000
                 dd 0x00000000
 fsize           dw 0x0000
+
 linecounter     dw 0x0000               ; Nearest 23 lines
-address         dw 0x0000              ; Address of where we are
+address         dw 0x0000               ; Address of where we are
 
 cline_length    dw 0x0000               ; Length of line that's been copied or cut
 
