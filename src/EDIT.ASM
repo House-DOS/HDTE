@@ -23,24 +23,39 @@ h_usage         dw usage                ; Usage string
 ; ========================================================================
 
 main:
-    mov ah, 0x28                        ; Load file from first parameter
+    mov ah, 0x0F                        ; Modify interface config
+    mov al, 0x03                        ; Turn off error messages and commentary
     int 0x7E
-
-    jc .done                            ; If failed, we're done
 
     mov ah, 0x20                        ; Otherwise, get the parameter
     mov cx, 0x0000                      ; First parameter
     mov di, fname                       ; Our filename buffer
     int 0x7E
 
+    mov ah, 0x28                        ; Load file from first parameter
+    int 0x7E
+
+    jc .new                             ; If failed, new file
+
     mov ah, 0x70                        ; Get size of file
     int 0x7E
 
     mov word [fsize], ax                ; Store size here
 
-    mov ah, 0x0F                        ; Modify interface config
-    mov al, 0x03                        ; Turn off error messages and commentary
+    jmp .load                           ; Proceed
+
+.new:
+    mov ah, 0x6D                        ; Insert line
+    mov si, newline_char                ; Just a blank line
+    mov cx, 0x0000                      ; Starting line
     int 0x7E
+
+    mov ah, 0x6F                        ; Write file to disk
+    mov si, fname                       ; Filename
+    mov cx, 0x0001                      ; File size
+    int 0x7E
+
+    mov word [fsize], 0x0001            ; Store size here
 
 .load:
     call draw_header                    ; Print header
@@ -50,7 +65,7 @@ main:
     push cx                             ; Preserve line number
     call get_line_length                ; Get the length of this line
 
-    jc .set_cursor                      ; If error, everything is loaded
+    jc .footer                          ; If error, everything is loaded
 
     mov ah, 0x0D                        ; Get cursor position
     int 0x7E
@@ -61,7 +76,7 @@ main:
     add dx, 0x0018                      ; Add 24 to get number of rows remaining (minus reserved bottom row)
 
     cmp dx, 0x0000                      ; Are we out of rows?
-    je .set_cursor                      ; If so, proceed
+    je .footer                          ; If so, proceed
 
     shl dx, 0x6                         ; Otherwise, multiply by 64
     mov bx, dx                          ; Copy result
@@ -95,7 +110,7 @@ main:
     int 0x7E
 
     mov ah, 0x62                        ; Get bytes
-    mov cx, dx                          ; Number of bytes left
+    mov cx, dx                          ; Number of spaces left
     mov di, dest_buffer                 ; Copy into buffer
     int 0x7E
 
@@ -103,6 +118,32 @@ main:
     mov si, dest_buffer                 ; Print from our buffer
     mov cx, di                          ; The ending index of the line
     sub cx, si                          ; Subtract to get the length of the line
+    int 0x7E
+
+.footer:
+    mov ah, 0x08                        ; Set cursor position
+    mov dx, 0x1840                      ; Mid-right, bottom row
+    int 0x7E
+
+    mov ah, 0x67                        ; Get line/column numbers
+    mov si, word [address]              ; Our address
+    int 0x7E
+
+    push dx                             ; Preserve column number
+
+    mov ax, 0x8202                      ; Print word as decimal
+    mov dx, cx                          ; Our line number
+    inc dx                              ; Start at 1 (for normal people)
+    int 0x7E
+
+    mov ah, 0x10                        ; Print bytes
+    mov si, colon_char                  ; A colon
+    mov cx, 0x0001                      ; One byte
+    int 0x7E
+
+    mov ax, 0x8202                      ; Print word as decimal
+    pop dx                              ; Restore column number
+    inc dx                              ; Start at 1 (for normal people)
     int 0x7E
 
 .set_cursor:
@@ -141,9 +182,6 @@ main:
     jmp .load                           ; And try printing again
 
 .edit:
-    mov ah, 0x0D                        ; Get cursor position
-    int 0x7E
-
     mov ah, 0x12                        ; Get keypress
     int 0x7E
 
@@ -222,6 +260,9 @@ main:
     jmp .load                           ; Print file again, then resume editing
 
 .backspace:
+    cmp word [address], 0x0000          ; Are we at the beginning of the file?
+    je .edit                            ; If so, do nothing
+
     mov ah, 0x6B                        ; Insert bytes (shift left)
     mov cx, 0xFFFF                      ; Shift 1 left (delete 1 character)
     mov di, word [address]              ; Shift starting from here
@@ -266,7 +307,7 @@ main:
     je .edit                            ; If so, do nothing
 
     dec word [address]                  ; Otherwise, move address back 1
-    jmp .set_cursor                     ; Update cursor position
+    jmp .footer                         ; Update footer/cursor position
 
 .right_arrow:
     mov ax, word [address]              ; Our position in the file
@@ -276,7 +317,7 @@ main:
     jnb .edit                           ; If so, do nothing
 
     inc word [address]                  ; Move address forward 1
-    jmp .set_cursor                     ; Update cursor position
+    jmp .footer                         ; Update footer/cursor position
 
 .up_arrow:
     mov ah, 0x67                        ; Get line and col
@@ -303,10 +344,10 @@ main:
     cmp bx, dx                          ; Is the line above us shorter than our col?
 
     pop bx                              ; Restore address of start of our line
-    jae .set_cursor                     ; If not, proceed
+    jae .footer                         ; If not, update footer/cursor position
 
     mov word [address], bx              ; Otherwise, set our address to this
-    jmp .set_cursor                     ; Proceed
+    jmp .footer                         ; Update footer/cursor position
 
 .down_arrow:
     mov ah, 0x67                        ; Get line and col
@@ -342,7 +383,7 @@ main:
 
     pop bx                              ; Restore line below us
     cmp cx, bx                          ; Is our address on the next line?
-    je .set_cursor
+    je .footer                          ; If so, update footer/cursor position
 
     mov ah, 0x65                        ; Get address of line
     mov cx, bx                          ; Line number
@@ -351,7 +392,7 @@ main:
 
     dec si                              ; Go one character back
     mov word [address], si              ; Go to this address
-    jmp .set_cursor
+    jmp .footer                         ; Update footer/cursor position
 
 .line_cut:
     mov ah, 0x67                        ; Get line/col from address
@@ -410,6 +451,10 @@ main:
     jmp .load                           ; Print edited version
 
 .save:
+    mov ah, 0x08                        ; Set cursor position
+    mov dx, 0x1800                      ; Bottom left
+    int 0x7E
+
     mov ah, 0x6F                        ; Write file to disk
     mov si, fname                       ; File name
     mov cx, word [fsize]                ; File size
@@ -503,6 +548,7 @@ address         dw 0x0000               ; Address of where we are
 cline_length    dw 0x0000               ; Length of line that's been copied or cut
 
 newline_char    db 0x0A
+colon_char      db 0x3A
 char_write      db 0x00
 
 menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste line", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
