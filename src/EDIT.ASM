@@ -114,6 +114,9 @@ main:
     mov cx, word [linecounter]          ; The starting line on screen
     int 0x7E
 
+    cmp word [address], si              ; Are we behind where the line actually begins?
+    jl .rowup                           ; If so, avoid infinite loop, start from one row higher
+
     mov ah, 0x62                        ; Get bytes starting from that point
     mov cx, word [address]              ; Print bytes of how far into the file
     sub cx, si                          ; Minus the bytes offscreen
@@ -123,6 +126,19 @@ main:
     mov ah, 0x10                        ; Print bytes
     mov si, dest_buffer                 ; Print from our buffer
     int 0x7E
+
+    mov ah, 0x0D                        ; Get cursor position
+    int 0x7E
+
+    cmp dh, 0x18                        ; Are we on the bottom row?
+    jl .edit                            ; If not, continue
+
+    inc word [linecounter]              ; Otherwise, start from next line
+    jmp .load                           ; And try printing again
+
+.rowup:
+    dec word [linecounter]              ; Start from one line above
+    jmp .load                           ; And try printing again
 
 .edit:
     mov ah, 0x0D                        ; Get cursor position
@@ -187,24 +203,6 @@ main:
     inc word [fsize]                    ; Increase file size by 1 character
 
     jmp .load
-
-
-    ;cmp
-    ; If they press enter, insert a newline
-    ; F1: Cut
-    ; F2: Copy
-    ; F3: Paste
-    ; F4: Delete
-    ; F8: Save
-
-    ; Display cursor
-    ; Check keyboard input
-    ; If arrow keys, move cursor
-    ; If normal keys, add to file where cursor is
-    ; If backspace/delete, remove from file
-    ; If enter, insert new line
-    ; If escape character, display special options/prompts
-    ; If quit character, leave
 
 .escape_menu:
     call draw_header                    ; Print header
