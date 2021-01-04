@@ -44,29 +44,66 @@ main:
 
 .load:
     call draw_header                    ; Print header
-    mov cx, 0x17                        ; Get and print 23 lines
+    mov cx, word [linecounter]          ; Start with the top line onscreen
 
 .print:
-    push cx                             ; Store line counter
+    push cx                             ; Preserve line number
+    call get_line_length                ; Get the length of this line
 
-    mov ah, 0x64                        ; Get line
-    neg cx                              ; Negate cx
-    add cx, 0x17                        ; Add 23 to get line index
-    add cx, word [linecounter]          ; Add what line we're on
+    jc .set_cursor                      ; If error, everything is loaded
+
+    mov ah, 0x0D                        ; Get cursor position
+    int 0x7E
+
+    mov dl, dh                          ; Row is all we care about
+    mov dh, 0x00                        ; Clear out upper byte
+    neg dx                              ; Negate
+    add dx, 0x0018                      ; Add 24 to get number of rows remaining (minus reserved bottom row)
+
+    cmp dx, 0x0000                      ; Are we out of rows?
+    je .set_cursor                      ; If so, proceed
+
+    shl dx, 0x6                         ; Otherwise, multiply by 64
+    mov bx, dx                          ; Copy result
+    shr bx, 0x2                         ; Divide copy by 4
+    add dx, bx                          ; Add to get row multplied by 80 (number of spaces left onscreen)
+
+    cmp cx, dx                          ; Do we have enough spaces left for this line?
+    jg .bytes_line                      ; If not, perform a different operation
+
+    mov ah, 0x64                        ; Otherwise, get line
+    pop cx                              ; Restore line number
+    push cx                             ; Push back to stack
     mov di, dest_buffer                 ; Copy into buffer
     int 0x7E
 
-    jc .set_cursor                      ; Everything is loaded
-
     mov ah, 0x10                        ; Print bytes
     mov si, dest_buffer                 ; Print from our buffer
-    mov cx, di
-    sub cx, si                          ; How many bytes in this line
+    mov cx, di                          ; The ending index of the line
+    sub cx, si                          ; Subtract to get the length of the line
     int 0x7E
 
 .nextline:
-    pop cx                              ; Restore line counter
-    loop .print                         ; Go to next line
+    pop cx                              ; Restore line number
+    inc cx                              ; Next line
+
+    jmp .print                          ; Load/print next line
+
+.bytes_line:
+    mov ah, 0x65                        ; Get address of line
+    pop cx                              ; Restore line number
+    int 0x7E
+
+    mov ah, 0x62                        ; Get bytes
+    mov cx, dx                          ; Number of bytes left
+    mov di, dest_buffer                 ; Copy into buffer
+    int 0x7E
+
+    mov ah, 0x10                        ; Print bytes
+    mov si, dest_buffer                 ; Print from our buffer
+    mov cx, di                          ; The ending index of the line
+    sub cx, si                          ; Subtract to get the length of the line
+    int 0x7E
 
 .set_cursor:
     mov ah, 0x08                        ; Set cursor position
@@ -142,7 +179,7 @@ main:
 
     mov ah, 0x6B                        ; Insert byte
     mov di, word [address]              ; Our position
-    mov cx, 0x01                        ; Write 1 byte
+    mov cx, 0x0001                      ; Write 1 byte
     mov si, char_write                  ; Address of our character
     int 0x7E
 
@@ -445,9 +482,12 @@ get_line_length:                        ; Get length of the line in CX
     int 0x7E
 
     pop cx                              ; Restore address
-    sub si, cx                          ; Subtract to get length of line
-    mov cx, si                          ; Put length in cx
+    jc .done                            ; If error, we're done
 
+    sub si, cx                          ; Subtract to get length of line
+    mov cx, si                          ; Put length in CX
+
+.done:
     ret                                 ; Return to caller
 
 
