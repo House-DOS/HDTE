@@ -24,7 +24,7 @@ h_usage         dw usage                ; Usage string
 
 main:
     mov ah, 0x0F                        ; Modify interface config
-    mov al, 0x03                        ; Turn off error messages and commentary
+    mov al, 0b00000011                  ; Turn off error messages and commentary
     int 0x7E
 
     mov ah, 0x20                        ; Otherwise, get the parameter
@@ -50,12 +50,8 @@ main:
     mov cx, 0x0000                      ; Starting line
     int 0x7E
 
-    mov ah, 0x6F                        ; Write file to disk
-    mov si, fname                       ; Filename
-    mov cx, 0x0001                      ; File size
-    int 0x7E
-
     mov word [fsize], 0x0001            ; Store size here
+    call save_file                      ; Save to disk
 
 .load:
     call draw_header                    ; Print header
@@ -455,13 +451,7 @@ main:
     mov dx, 0x1800                      ; Bottom left
     int 0x7E
 
-    mov ah, 0x6F                        ; Write file to disk
-    mov si, fname                       ; File name
-    mov cx, word [fsize]                ; File size
-    int 0x7E
-
-    jc .done                            ; Done if there's an error
-
+    call save_file                      ; Save to disk
     jmp .load                           ; Return to editing
 
 .done:
@@ -531,6 +521,28 @@ get_line_length:                        ; Get length of the line in CX
     mov cx, si                          ; Put length in CX
 
 .done:
+    ret                                 ; Return to caller
+
+
+save_file:                              ; Save the file
+    pusha                               ; Save register states to stack
+
+    mov ah, 0x0F                        ; Set interface config
+    mov al, 0b00000010                  ; Error messages on, commentary off
+    int 0x7E
+
+    mov ah, 0x6F                        ; Write file to disk
+    mov si, fname                       ; File name
+    mov cx, word [fsize]                ; File size
+    int 0x7E
+
+    jc main.done                        ; If failed, we're done
+
+    mov ah, 0x0F                        ; Set interface config
+    mov al, 0b00000011                  ; Error messages off, commentary off
+    int 0x7E
+
+    popa                                ; Restore register states
     ret                                 ; Return to caller
 
 
