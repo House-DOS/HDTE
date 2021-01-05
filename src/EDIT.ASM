@@ -178,10 +178,8 @@ main:
     jmp .load                           ; And try printing again
 
 .edit:
-    mov ah, 0x12                        ; Get keypress
+    mov ah, 0x15                        ; Get next keypress
     int 0x7E
-
-    jc .edit                            ; Loop if no keypress
 
     cmp ah, 0x01                        ; Is it an escape?
     je .escape_menu
@@ -240,20 +238,18 @@ main:
 
 .escape_menu:
     call draw_header                    ; Print header
+
     mov ah, 0x02                        ; Print line
     mov si, menu_text                   ; Escape menu text
     int 0x7E
 
-.escape_loop:
-    mov ah, 0x12                        ; Get keypress
+    mov ah, 0x15                        ; Get next keypress
     int 0x7E
-
-    jc .escape_loop                     ; Loop if no keypress
 
     cmp ah, 0x01                        ; Is it escape again?
     je .done                            ; If so, quit
 
-    jmp .load                           ; Print file again, then resume editing
+    jmp .load                           ; Otherwise, print file again, then resume editing
 
 .backspace:
     cmp word [address], 0x0000          ; Are we at the beginning of the file?
@@ -570,7 +566,8 @@ editing_message db "Editing file", 0x00
 
 creator         db "Ben and Jacob", 0x00
 desc            db "A text editor for the House-DOS platform.", 0x00
-usage           db "EDIT <FILENAME>", 0x00
+usage           db "EDIT <FILENAME>", 0x0A
+                db "Flags: none", 0x00
 
 line_storage:
 times 0x50      db 0x00
