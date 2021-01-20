@@ -35,7 +35,7 @@ main:
     mov ah, 0x28                        ; Load file from first parameter
     int 0x7E
 
-    jc .buffer_file                     ; If failed, load contents of buffer
+    jc .new                             ; If failed, new file
 
     mov ah, 0x70                        ; Get size of file
     int 0x7E
@@ -44,29 +44,14 @@ main:
 
     jmp .load                           ; Proceed
 
-.buffer_file:
-    mov ax, 0x5000                      ; Get string from buffer
-    mov di, dest_buffer                 ; Load file into destination buffer
+.new:
+    mov ah, 0x6D                        ; Insert line
+    mov si, newline_char                ; Just a blank line
+    mov cx, 0x0000                      ; Starting line
     int 0x7E
 
-    mov ah, 0x70                        ; Get size of file
-    int 0x7E
-
-    mov word [fsize], ax                ; Store file size here
-
-    jmp .load                           ; Proceed
-
-.get_file_name:
-    mov ah, 0x01                        ; Print line
-    mov si, request_filename            ; Message to ask for file name
-    int 0x7E
-
-    mov ah, 0x04                        ; Get input
-    mov di, fname                       ; Put the filename here
-    mov cx, 0x08                        ; Up to 8 characters
-    int 0x7E
-
-    jmp .actually_save                  ; Now save this file
+    mov word [fsize], 0x0001            ; Store size here
+    call save_file                      ; Save to disk
 
 .load:
     call draw_header                    ; Print header
@@ -458,10 +443,6 @@ main:
     jmp .load                           ; Print edited version
 
 .save:
-    cmp word [fname], 0x0000            ; Is there no file name yet (not specified w/ parameter)?
-    je .get_file_name                   ; If so, get a file name through user input
-
-.actually_save:
     mov ah, 0x08                        ; Set cursor position
     mov dx, 0x1800                      ; Bottom left
     int 0x7E
@@ -582,7 +563,6 @@ menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0
                 db "Press ESC to exit, any other key to return...", 0x00
 save_message    db "File saved!", 0x00
 editing_message db "Editing file", 0x00
-request_filename db "Please enter a file name: ", 0x00
 
 creator         db "Ben and Jacob", 0x00
 desc            db "A text editor for the House-DOS platform.", 0x00
