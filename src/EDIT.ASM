@@ -40,6 +40,8 @@ main:
     mov ah, 0x28                        ; Load file from first parameter
     int 0x7E
 
+    jc .buffer_file                     ; If failed, load contents of buffer
+
     mov ah, 0x70                        ; Get size of file
     int 0x7E
 
@@ -47,10 +49,15 @@ main:
 
     jmp .load                           ; Proceed
 
+.empty:
+    mov ax, 0x4002                      ; Output line break
+    int 0x7E
+
 .buffer_file:
     mov ax, 0x4113                      ; Get endpoint of buffer
     int 0x7E
 
+    jcxz .empty                         ; If nothing is in the buffer, we need a line break
     mov word [fsize], cx                ; Store file size here
 
     jmp .load                           ; Proceed
@@ -62,7 +69,7 @@ main:
 
     mov ah, 0x04                        ; Get input
     mov di, fname                       ; Put the filename here
-    mov cx, 0x0C                        ; Up to 12 characters
+    mov cx, 0x000C                      ; Up to 12 characters
     int 0x7E
 
     jmp .actually_save                  ; Now save this file
