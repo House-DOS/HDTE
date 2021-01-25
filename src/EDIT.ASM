@@ -163,6 +163,9 @@ main:
     inc dx                              ; Start at 1 (for normal people)
     int 0x7E
 
+    mov ax, 0x1920                      ; Print space
+    int 0x7E
+
 .set_cursor:
     mov ah, 0x08                        ; Set cursor position
     mov dx, 0x0100                      ; The upper-left corner (avoid the header)
@@ -480,6 +483,10 @@ main:
     jmp .load                           ; Return to editing
 
 .done:
+    mov ax, 0x4111                      ; Set endpoint
+    mov cx, word [fsize]                ; Our file size
+    int 0x7E
+
     mov ah, 0xFF                        ; End command
     int 0x7E
 
