@@ -139,9 +139,7 @@ main:
     inc dx                              ; Start at 1 (for normal people)
     int 0x7E
 
-    mov ah, 0x10                        ; Print bytes
-    mov si, colon_char                  ; A colon
-    mov cx, 0x0001                      ; One byte
+    mov ah, 0x193A                      ; Print a colon
     int 0x7E
 
     mov ax, 0x8202                      ; Print word as decimal
@@ -169,7 +167,7 @@ main:
     pop dx                              ; Restore starting line address
 
     cmp di, dx                          ; Are we behind where the line actually begins?
-    jl .rowup                           ; If so, avoid infinite loop, start from one row higher
+    jb .rowup                           ; If so, avoid infinite loop, start from one row higher
 
     mov ax, 0x5800                      ; Get bytes starting from that point
     mov cx, di                          ; Print bytes of how far into the file
@@ -504,10 +502,6 @@ linecounter     dw 0x0000               ; Nearest 23 lines
 
 cline_length    dw 0x0000               ; Length of line that's been copied or cut
 
-newline_char    db 0x0A
-colon_char      db 0x3A
-char_write      db 0x00
-
 menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste line", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
 save_message    db "File saved!", 0x00
@@ -520,6 +514,6 @@ usage           db "EDIT <FILENAME>", 0x0A
                 db "Flags: none", 0x00
 
 line_storage:
-times 0x50      db 0x00
+times 0x0080    db 0x00
 
 dest_buffer:
