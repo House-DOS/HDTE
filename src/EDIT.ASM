@@ -139,7 +139,7 @@ main:
     inc dx                              ; Start at 1 (for normal people)
     int 0x7E
 
-    mov ah, 0x193A                      ; Print a colon
+    mov ax, 0x193A                      ; Print a colon
     int 0x7E
 
     mov ax, 0x8202                      ; Print word as decimal
@@ -435,7 +435,7 @@ draw_header:
 
     mov ah, 0x11                        ; Draw block
     mov al, 0x20                        ; Spaces
-    mov bl, 0b10010000                  ; Blinking, blue background, black foreground
+    mov bl, 0b01010000                  ; Purple background, black foreground
     mov cx, 0x0050                      ; The length of one row
     mov dx, 0x0000                      ; Uppermost row, leftmost col
     int 0x7E
