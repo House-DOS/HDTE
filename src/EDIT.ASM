@@ -53,7 +53,7 @@ main:
 
 .get_file_name:
     mov ah, 0x01                        ; Print line
-    mov si, request_filename            ; Message to ask for file name
+    mov si, prompt_filename             ; Message to ask for file name
     int 0x7E
 
     mov ah, 0x04                        ; Get input
@@ -98,10 +98,12 @@ main:
     pop cx                              ; Restore line number
     push cx                             ; Push back to stack
     mov di, dest_buffer                 ; Copy into buffer
+    add di, word [cline_length]         ; Out of the way of the clipboard
     int 0x7E
 
     mov ah, 0x10                        ; Print bytes
     mov si, dest_buffer                 ; Print from our buffer
+    add si, word [cline_length]         ; Where we started
     mov cx, di                          ; The ending index of the line
     sub cx, si                          ; Subtract to get the length of the line
     int 0x7E
@@ -116,10 +118,12 @@ main:
     mov ax, 0x5800                      ; Manually retrieve bytes
     mov cx, dx                          ; Number of spaces left
     mov di, dest_buffer                 ; Copy into buffer
+    add di, word [cline_length]         ; Out of the way of the clipboard
     int 0x7E
 
     mov ah, 0x10                        ; Print bytes
     mov si, dest_buffer                 ; Print from our buffer
+    add si, word [cline_length]         ; Where we started
     mov cx, di                          ; The ending index of the line
     sub cx, si                          ; Subtract to get the length of the line
     int 0x7E
@@ -173,11 +177,13 @@ main:
     mov cx, di                          ; Print bytes of how far into the file
     sub cx, dx                          ; Minus the bytes offscreen
     mov si, dx                          ; Start from the starting line
-    mov di, dest_buffer
+    mov di, dest_buffer                 ; Copy to our buffer
+    add di, word [cline_length]         ; Out of the way of the clipboard
     int 0x7E
 
     mov ah, 0x10                        ; Print bytes
     mov si, dest_buffer                 ; Print from our buffer
+    add si, word [cline_length]         ; Where we started
     int 0x7E
 
     mov ah, 0x0D                        ; Get cursor position
@@ -266,7 +272,17 @@ main:
     jmp .load                           ; Print edited version
 
 .delete:
-    mov ax, 0x4D00                      ; Delete 1 character
+    mov ax, 0x4112                      ; Get pointer
+    int 0x7E
+
+    mov ax, 0x4113                      ; Get endpoint
+    int 0x7E
+
+    dec cx                              ; Don't count the final newline
+    cmp di, cx                          ; Is our pointer at/beyond the end of the buffer?
+    jnb .edit                           ; If so, do nothing
+
+    mov ax, 0x4D00                      ; Otherwise, delete 1 character
     int 0x7E
 
     jmp .load                           ; Print edited version
@@ -292,7 +308,7 @@ main:
     mov ax, 0x4113                      ; Get endpoint
     int 0x7E
 
-    sub cx, 0x0002                      ; Don't count the final newline
+    dec cx                              ; Don't count the final newline
     cmp di, cx                          ; Is our pointer at/beyond the end of the buffer?
     jnb .edit                           ; If so, do nothing
 
@@ -496,17 +512,15 @@ headermsg       db "House-DOS Text Editor", 0x00
 
 fname           dq 0x0000000000000000
                 dd 0x00000000
-fsize           dw 0x0000
 
 linecounter     dw 0x0000               ; Nearest 23 lines
-
-cline_length    dw 0x0000               ; Length of line that's been copied or cut
+cline_length    dw 0x0000               ; Length of line in the clipboard
 
 menu_text       db "Commands:", 0x0A, "F1: Cut line", 0x0A, "F2: Copy line", 0x0A, "F3: Paste line", 0x0A, "F4: Delete line", 0x0A, "F8: Save", 0x0A
                 db "Press ESC to exit, any other key to return...", 0x00
 save_message    db "File saved!", 0x00
 editing_message db "Editing file", 0x00
-request_filename db "Please enter a file name: ", 0x00
+prompt_filename db "Please enter a file name: ", 0x00
 
 creator         db "Ben and Jacob", 0x00
 desc            db "A text editor for the House-DOS platform.", 0x00
@@ -514,6 +528,6 @@ usage           db "EDIT <FILENAME>", 0x0A
                 db "Flags: none", 0x00
 
 line_storage:
-times 0x0080    db 0x00
+                db 0x00
 
 dest_buffer:
