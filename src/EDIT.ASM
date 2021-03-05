@@ -26,6 +26,10 @@ main:
     mov ax, 0x4300                      ; Set default output device to NUL
     int 0x7E
 
+    mov ah, 0x1A                        ; Switch display page
+    stc                                 ; Switch to secondary
+    int 0x7E
+
     mov ah, 0x0F                        ; Modify interface config
     mov al, 0b00000011                  ; Turn off error messages and commentary
     int 0x7E
@@ -212,6 +216,12 @@ main:
     cmp ah, 0x53                        ; Delete key
     je .delete
 
+    cmp ah, 0x47                        ; Home key
+    je .home
+
+    cmp ah, 0x4F                        ; End key
+    je .end
+
     cmp ah, 0x4B                        ; Left arrow
     je .left_arrow
 
@@ -293,6 +303,32 @@ main:
     int 0x7E
 
     jmp .load                           ; Print edited version
+
+.home:                                  ; Supposed to go to beginning of line
+    mov ax, 0x4114                      ; Get line and column of pointer
+    int 0x7E
+
+    mov cx, dx                          ; Move column number into cx
+
+    neg cx                              ; Go backward however many characters our column number is
+    mov ax, 0x4121                      ; Advance pointer
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.end:                                   ; Supposed to go to end of line
+    mov ax, 0x4114                      ; Get line and column of pointer
+    int 0x7E
+
+    mov ax, 0x5910                      ; Get line info (line number is in cx)
+    int 0x7E
+
+    sub cx, dx                          ; Subtract our column number from length of line to get how many bytes to advance
+    dec cx                              ; Avoid an O.B.O.E.
+    mov ax, 0x4121                      ; Advance pointer
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
 
 .left_arrow:
     mov ax, 0x4120                      ; Advance pointer
