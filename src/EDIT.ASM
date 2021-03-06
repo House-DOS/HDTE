@@ -56,6 +56,8 @@ main:
     jmp .load                           ; Proceed
 
 .get_file_name:
+    mov byte [fnamegiven], 0xFF         ; Sets to true
+
     mov ah, 0x01                        ; Print line
     mov si, prompt_filename             ; Message to ask for file name
     int 0x7E
@@ -216,6 +218,12 @@ main:
     cmp ah, 0x53                        ; Delete key
     je .delete
 
+    cmp ah, 0x77                        ; Control + home
+    je .ctrl_home
+
+    cmp ah, 0x75                        ; Control + end
+    je .ctrl_end
+
     cmp ah, 0x47                        ; Home key
     je .home
 
@@ -304,7 +312,23 @@ main:
 
     jmp .load                           ; Print edited version
 
-.home:                                  ; Supposed to go to beginning of line
+.ctrl_home:                             ; Go to beginning of file
+    mov ax, 0x4140                      ; Move buffer pointer to beginning
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.ctrl_end:                              ; Go to end of file
+    mov ax, 0x4141                      ; Move pointer to end of file
+    int 0x7E
+
+    mov ax, 0x4120                      ; Decrement buffer pointer
+    std                                 ; Set DF to decrement
+    int 0x7E
+
+    jmp .footer                         ; Update footer/cursor position
+
+.home:                                  ; Go to beginning of line
     mov ax, 0x4114                      ; Get line and column of pointer
     int 0x7E
 
@@ -316,7 +340,7 @@ main:
 
     jmp .footer                         ; Update footer/cursor position
 
-.end:                                   ; Supposed to go to end of line
+.end:                                   ; Go to end of line
     mov ax, 0x4114                      ; Get line and column of pointer
     int 0x7E
 
@@ -463,7 +487,7 @@ main:
     mov dx, 0x1800                      ; Bottom left
     int 0x7E
 
-    cmp word [fname], 0x0000            ; Is there no file name yet (not specified w/ parameter)?
+    cmp byte [fname], 0x00              ; Is there no file name yet (not specified w/ parameter)?
     je .get_file_name                   ; If so, get a file name through user input
 
 .actually_save:
@@ -478,6 +502,17 @@ main:
     mov ah, 0xFF                        ; End command
     int 0x7E
 
+.error:                                 ; If there is no valid filename provided
+    mov ah, 0x09                        ; Pause
+    int 0x7E
+
+    cmp byte [fnamegiven], 0xFF         ; Have we already asked for a filename?
+    jne .load                           ; If not, load file again
+
+    mov byte [fname], 0x00              ; If so, reset filename to 0
+    mov byte [fnamegiven], 0x00         ; Done working with a written filename
+
+    jmp .load                           ; Load file again
 
 draw_header:
     pusha                               ; Save register states
@@ -532,8 +567,9 @@ save_file:                              ; Save the file
     mov si, fname                       ; File name
     int 0x7E
 
-    jc main.done                        ; If failed, we're done
+    jc main.error                       ; If failed, go back to editing
 
+    mov byte [fnamegiven], 0x00         ; Clear whether we've asked for a file name
     mov ah, 0x0F                        ; Set interface config
     mov al, 0b00000011                  ; Error messages off, commentary off
     int 0x7E
@@ -548,6 +584,8 @@ headermsg       db "House-DOS Text Editor", 0x00
 
 fname           dq 0x0000000000000000
                 dd 0x00000000
+
+fnamegiven      db 0x00
 
 linecounter     dw 0x0000               ; Nearest 23 lines
 cline_length    dw 0x0000               ; Length of line in the clipboard
